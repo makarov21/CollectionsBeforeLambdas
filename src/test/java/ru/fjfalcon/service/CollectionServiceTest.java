@@ -78,6 +78,5 @@ class CollectionServiceTest {
 
         return Arrays.asList(antony, philip, dexter, max, annie);
 
-
     }
 }
