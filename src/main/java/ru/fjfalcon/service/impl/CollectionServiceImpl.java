@@ -13,6 +13,15 @@ import ru.fjfalcon.model.WorkDay;
 import ru.fjfalcon.service.CollectionService;
 
 public class CollectionServiceImpl implements CollectionService {
+
+    interface KeyMapper<T, K> {
+        K getKey(T object);
+    }
+
+    interface CollisionResolver<T> {
+        T resolve(T obj1, T obj2);
+    }
+
     @Override
     public Map<Department, List<Employee>> generateDepartmentMap(List<Employee> employees) {
         Map<Department, List<Employee>> departmentMap = new HashMap<Department, List<Employee>>();
@@ -51,44 +60,69 @@ public class CollectionServiceImpl implements CollectionService {
 
     @Override
     public Map<Department, Map<Employee, BigDecimal>> groupByDepartmentWithEmployeeAndSalary(List<Employee> employees) {
-        Map<Department, List<Employee>> departmentMap = generateDepartmentMap(employees);
-        Map<Department, Map<Employee, BigDecimal>> departmentEmployeeSalaryMap =
-                new HashMap<Department, Map<Employee, BigDecimal>>();
-
-        for (Department key: departmentMap.keySet()) {
-            Map<Employee, BigDecimal> salaryMap = new HashMap<Employee, BigDecimal>();
-            for (Employee employee: departmentMap.get(key)) {
-                salaryMap.put(employee, countSalary(employee));
+        return groupWithSalary(employees, new KeyMapper<Employee, Employee>() {
+            @Override
+            public Employee getKey(Employee object) {
+                return object;
             }
-            departmentEmployeeSalaryMap.put(key, salaryMap);
-        }
-        return departmentEmployeeSalaryMap;
+        }, new KeyMapper<Department, Department>() {
+            @Override
+            public Department getKey(Department object) {
+                return object;
+            }
+        }, new CollisionResolver<BigDecimal>() {
+            @Override
+            public BigDecimal resolve(BigDecimal obj1, BigDecimal obj2) {
+                return obj1.add(obj2);
+            }
+        });
     }
 
     @Override
     public Map<String, Map<String, BigDecimal>> groupByDepartmentNameWithEmployeeNameAndSalayMap(
             List<Employee> employees) {
-
-        Map<Department, Map<Employee, BigDecimal>> departmentEmployeeSalaryMap =
-                groupByDepartmentWithEmployeeAndSalary(employees);
-        Map<String, Map<String, BigDecimal>> departmentNameEmployeeNameSalaryMap =
-                new HashMap<String, Map<String, BigDecimal>>();
-
-        for (Department department: departmentEmployeeSalaryMap.keySet()) {
-            Map<Employee, BigDecimal> salaryMap = departmentEmployeeSalaryMap.get(department);
-            Map<String, BigDecimal> nameSalaryMap = new HashMap<String, BigDecimal>();
-            for (Employee employee: salaryMap.keySet()) {
-                //Names collision
-                BigDecimal currentSalary = nameSalaryMap.get(employee.getName());
-                BigDecimal newSalary = (currentSalary == null) ?
-                        salaryMap.get(employee) :
-                        salaryMap.get(employee).add(currentSalary);
-                nameSalaryMap.put(employee.getName(), newSalary);
+        return groupWithSalary(employees, new KeyMapper<Employee, String>() {
+            @Override
+            public String getKey(Employee object) {
+                return object.getName();
             }
-            departmentNameEmployeeNameSalaryMap.put(department.getName(), nameSalaryMap);
-        }
+        }, new KeyMapper<Department, String>() {
+            @Override
+            public String getKey(Department object) {
+                return object.getName();
+            }
+        }, new CollisionResolver<BigDecimal>() {
+            @Override
+            public BigDecimal resolve(BigDecimal obj1, BigDecimal obj2) {
+                return obj1.add(obj2);
+            }
+        });
+    }
 
-        return departmentNameEmployeeNameSalaryMap;
+    private <D, E>  Map<D, Map<E, BigDecimal>>groupWithSalary(List<Employee> employees,
+                                                              KeyMapper<Employee, E> employeeMapper,
+                                                              KeyMapper<Department, D> departmentMapper,
+                                                              CollisionResolver<BigDecimal> collisionResolver) {
+
+        Map<Department, List<Employee>> departmentMap = generateDepartmentMap(employees);
+        Map<D, Map<E, BigDecimal>> departmentEmployeeSalaryMap =
+                new HashMap<D, Map<E, BigDecimal>>();
+
+        for (Department dep: departmentMap.keySet()) {
+            D departmentKey = departmentMapper.getKey(dep);
+            Map<E, BigDecimal> salaryMap = new HashMap<E, BigDecimal>();
+
+            for (Employee employee: departmentMap.get(dep)) {
+                E employeeKey = employeeMapper.getKey(employee);
+                BigDecimal currentSalary = salaryMap.get(employeeKey);
+                BigDecimal newSalary = (currentSalary == null) ?
+                        countSalary(employee) :
+                        collisionResolver.resolve(currentSalary, countSalary(employee));
+                salaryMap.put(employeeKey, newSalary);
+            }
+            departmentEmployeeSalaryMap.put(departmentKey, salaryMap);
+        }
+        return departmentEmployeeSalaryMap;
     }
 
     @Override
